@@ -1,0 +1,12 @@
+test_that("a fusion is fitted and applied", {
+  e <- example_setup()
+  maps <- fb_tbc_maps(e$stack, e$model)
+  dl <- fb_read_probabilities(e$files$prue)
+  fu <- fb_fit_fusion(maps, dl, e$ref, n_pixels = 2000)
+  expect_s3_class(fu, "fb_fusion")
+  fused <- fb_fuse(maps, dl, fu)
+  expect_equal(names(fused), c("edge", "cropland"))
+  v <- terra::values(fused)
+  expect_true(all(v >= 0 & v <= 1))
+  expect_output(print(fu), "fusion")
+})

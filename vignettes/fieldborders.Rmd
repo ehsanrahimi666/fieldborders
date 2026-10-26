@@ -1,0 +1,163 @@
+---
+title: "Get started with fieldborders"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Get started with fieldborders}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7.2, fig.height = 4.2, dpi = 96,
+                      out.width = "100%", message = FALSE)
+```
+
+A field border is often hard to see in one satellite image: two fields of the same crop
+can look alike on any given day. Over a season the border becomes obvious, because
+neighbouring fields are sown, irrigated, cut and harvested at different times. The
+**temporal boundary contrast** (TBC) method in `fieldborders` uses this. For pairs of
+pixels on either side of a known border and pairs inside one field, it measures how
+differently every band and normalised difference changes between the two pixels over a
+year of monthly Sentinel-2 images, ranks the features by how well this contrast separates
+the two kinds of pairs, and learns from the best of them:
+
+* an **edge map**, the probability that a pixel lies on a border between two fields, and
+* a **cropland map**, the probability that a pixel belongs to a field at all.
+
+Field objects are then grown from seeds inside fields by a marker-controlled watershed on
+the edge map. The maps can be fused with the output of a deep segmentation model, and the
+result is scored with the object metric of the Fields of The World (FTW) benchmark.
+
+```{r}
+library(fieldborders)
+library(ggplot2)
+library(patchwork)
+```
+
+## A Sentinel-2 time series
+
+The package ships four small windows (about 1 km across) of monthly Sentinel-2 scenes,
+ten bands each, on the FTW grid of about 5 m. This one is in the Columbia Basin of
+Washington, with centre-pivot and rectangular irrigated fields:
+
+```{r}
+s <- fb_example_stack("washington")
+s
+```
+
+```{r, fig.height = 2.6}
+months <- c(3, 5, 7, 9)
+wrap_plots(lapply(months, function(k) fb_plot_rgb(s, date = k) + labs(subtitle = NULL)), nrow = 1)
+```
+
+Your own images enter the same way through `fb_read_stack()` (one multi-band file per
+date) or `fb_stack()` (a `SpatRaster`), and `fb_s2_monthly()` downloads a monthly series for
+any area (see `vignette("new-area")`).
+
+## Edge and cropland maps
+
+`fb_model_pretrained()` returns models fitted on reference fields in California and
+Washington. `fb_tbc_maps()` applies a model to a stack:
+
+```{r}
+m <- fb_model_pretrained("general")
+m
+maps <- fb_tbc_maps(s, m)
+```
+
+```{r, fig.height = 4}
+fb_plot_maps(maps)
+```
+
+## From maps to fields
+
+`fb_delineate()` turns the maps into field objects, with the thresholds that were tuned
+for the model on separate reference tiles:
+
+```{r}
+m$thresholds
+fields <- fb_delineate(maps, thresholds = m$thresholds)
+```
+
+```{r, fig.height = 5}
+fb_plot_fields(fields, s, date = 7)
+```
+
+`fb_polygons()` converts the objects to an `sf` data frame with the area, perimeter,
+compactness and mean map values of each field, ready to be written to any vector format:
+
+```{r}
+p <- fb_polygons(fields, maps)
+head(p)
+f <- tempfile(fileext = ".gpkg")
+sf::st_write(p, f, quiet = TRUE)
+```
+
+`fb_fields()` runs the same steps in one call.
+
+## How good is it?
+
+The California example comes with reference fields from the California Department of
+Water Resources. `fb_reference()` rasterises them to the image grid (field interior,
+boundary, background), and `fb_evaluate()` matches delineated and reference fields one to
+one at an intersection over union above 0.5, as in the FTW benchmark:
+
+```{r}
+s_ca <- fb_example_stack("california")
+f_ca <- fb_example_files("california")
+ref_poly <- sf::st_read(f_ca$fields, quiet = TRUE)
+ref <- fb_reference(ref_poly, s_ca)
+maps_ca <- fb_tbc_maps(s_ca, m)
+fields_ca <- fb_delineate(maps_ca, thresholds = m$thresholds)
+ev <- fb_evaluate(ref, fields_ca)
+fb_accuracy(ev)[, c("reference_fields", "predicted_fields", "obj_precision", "obj_recall", "obj_f1")]
+```
+
+```{r, fig.height = 5}
+fb_plot_fields(fields_ca, s_ca, date = 7, reference = ref_poly)
+```
+
+The dashed white lines are the reference fields. A window this small holds only a few
+fields, so these numbers say little about accuracy in general; `vignette("validation")`
+summarises the validation on several thousand reference fields.
+
+## Adding a deep model
+
+Deep segmentation models such as the FTW PRUE models predict, for every pixel, the
+probability of background, field interior and field boundary from two images of the
+season. `fb_prue_predict()` runs PRUE in R (it needs the `torch` package); the examples
+include its output for each window:
+
+```{r}
+dl <- fb_read_probabilities(f_ca$prue)
+fu <- fb_model_pretrained("general", "fusion")
+fused <- fb_fuse(maps_ca, dl, fu)
+```
+
+The fusion combines the deep-model and TBC probabilities with two logistic regressions
+fitted on reference pixels. The three edge maps side by side:
+
+```{r, fig.height = 3}
+edges <- c(dl[["boundary"]], maps_ca[["edge"]], fused[["edge"]])
+names(edges) <- c("PRUE B3", "TBC", "TBC + PRUE B3")
+fb_plot_maps(edges)
+```
+
+and the accuracy of the objects obtained from each, all with the same object procedure
+(the deep model alone with the thresholds of the fusion):
+
+```{r, fig.height = 3}
+counts <- rbind(
+  cbind(method = "PRUE B3", fb_evaluate(ref, fb_delineate(dl, thresholds = fu$thresholds))),
+  cbind(method = "TBC", fb_evaluate(ref, fields_ca)),
+  cbind(method = "TBC + PRUE B3", fb_evaluate(ref, fb_delineate(fused, thresholds = fu$thresholds))))
+fb_plot_accuracy(fb_accuracy(counts, by = "method"))
+```
+
+## Where next
+
+* `vignette("training")`: train a model on your own reference fields and choose the
+  features and thresholds.
+* `vignette("new-area")`: download Sentinel-2 for any area and map its fields.
+* `vignette("gallery")`: the pretrained model in six farming regions around the world.
+* `vignette("validation")`: the accuracy measures and the results of the validation.

@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "fieldborders: Agricultural Field Boundaries from Sentinel-2 Time Series"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: Rahimi
+    given-names: Ehsan
+    orcid: "https://orcid.org/0000-0002-8401-472X"
+  - family-names: Jung
+    given-names: Chuleui
+version: 1.0.0
+license: GPL-3.0-or-later
+repository-code: "https://github.com/ehsanrahimi666/fieldborders"
+abstract: >-
+  An R package that delineates agricultural fields from Sentinel-2 image time series.
+  The temporal boundary contrast method ranks spectral bands and indices by how
+  differently they change through the season across field borders and inside fields,
+  learns an edge map and a cropland map, and turns them into field objects by
+  marker-controlled watershed; the maps can be fused with the class probabilities of
+  deep segmentation models.
+keywords:
+  - field boundaries
+  - agriculture
+  - Sentinel-2
+  - remote sensing
+  - time series
+  - segmentation

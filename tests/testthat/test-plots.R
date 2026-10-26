@@ -1,0 +1,13 @@
+test_that("plots are ggplot objects", {
+  e <- example_setup()
+  maps <- fb_tbc_maps(e$stack, e$model)
+  fields <- fb_delineate(maps)
+  expect_s3_class(fb_plot_rgb(e$stack, 7), "ggplot")
+  expect_s3_class(fb_plot_maps(maps), "ggplot")
+  expect_s3_class(fb_plot_fields(fields, e$stack, 7, reference = sf::st_read(e$files$fields, quiet = TRUE)), "ggplot")
+  rk <- fb_rank_contrast(e$stack, e$ref, n_pairs = 300)
+  expect_s3_class(fb_plot_ranking(rk, 10), "ggplot")
+  acc <- fb_accuracy(cbind(method = "tbc", fb_evaluate(e$ref, fields)), by = "method")
+  expect_s3_class(fb_plot_accuracy(acc), "ggplot")
+  expect_s3_class(fb_plot_accuracy(acc, "size"), "ggplot")
+})

@@ -1,0 +1,268 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd: edit that file and knit it. -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "man/figures/README-", out.width = "100%",
+                      message = FALSE)
+options(width = 100)
+```
+
+# fieldborders <img src="man/figures/logo.png" align="right" height="139" alt="fieldborders logo" />
+
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/ehsanrahimi666/fieldborders/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/ehsanrahimi666/fieldborders/actions/workflows/R-CMD-check.yaml)
+[![pkgdown](https://github.com/ehsanrahimi666/fieldborders/actions/workflows/pkgdown.yaml/badge.svg)](https://ehsanrahimi666.github.io/fieldborders/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![tests](https://img.shields.io/badge/tests-100%20passing-brightgreen.svg)](tests/testthat)
+<!-- badges: end -->
+
+**Agricultural field boundaries from Sentinel-2 time series**
+
+**Documentation site:** <https://ehsanrahimi666.github.io/fieldborders/>
+
+Where one field ends and the next begins is often invisible in a single satellite image,
+but it shows over a season: neighbouring fields are sown, irrigated, cut and harvested at
+different times. `fieldborders` learns which spectral bands and indices change most
+differently across field borders through a year of monthly Sentinel-2 images
+(**temporal boundary contrast**, TBC), turns the selected contrasts into an edge map and a
+cropland map, and grows field objects from seeds inside fields by a marker-controlled
+watershed. It needs no deep network and no GPU, ships pretrained models, and can run and
+fuse the Fields of The World (FTW) PRUE deep models in R. Results come as rasters and
+polygons, scored with the object metric of the FTW benchmark.
+
+![From a year of Sentinel-2 images to fields: Columbia Basin, Washington](man/figures/README-overview.png)
+
+## Installation
+
+`fieldborders` needs R (>= 4.1) with `terra` and `sf`. It contains C++ code, so installing
+from source needs a compiler: Rtools on Windows, the Xcode command line tools on macOS.
+
+```r
+install.packages("remotes")
+remotes::install_github("ehsanrahimi666/fieldborders")
+```
+
+Optional packages: `rstac` to download Sentinel-2 (`fb_s2_monthly()`), `torch` to run the
+PRUE deep model (`fb_prue_predict()`; after installing it, run `torch::install_torch()`
+once), `svid` for published spectral indices as candidate features
+(`remotes::install_github("ehsanrahimi666/_SVID")`), and `patchwork` for the multi-panel
+figures of the articles.
+
+## Quick start (runs as-is, no files needed)
+
+```{r quickstart}
+library(fieldborders)
+
+s <- fb_example_stack("washington")   # 11 monthly Sentinel-2 scenes, 10 bands, about 5 m
+res <- fb_fields(s)                   # pretrained model: maps, field objects, polygons
+res$polygons
+```
+
+```{r quickstart-plot, fig.width = 5, fig.height = 5.6, out.width = "55%", fig.alt = "Delineated fields over a Sentinel-2 image"}
+fb_plot_fields(res$fields, s, date = 7)
+```
+
+## How it works
+
+![The workflow and its functions](man/figures/README-workflow.png)
+
+1. **Border contrast.** For pixel pairs that straddle the border between two reference
+   fields and pairs inside one field, every band and normalised difference is compared
+   between the two ends of the pair on each clear date. The seasonal maximum and mean of
+   the log absolute difference rank the features by how well they separate the two kinds
+   of pairs (`fb_rank_contrast()`), and a set of weakly correlated top features is kept
+   (`fb_select_features()`).
+2. **Models.** A logistic regression on the contrasts of the selected features gives the
+   probability that a pixel lies on a border; gradient-boosted trees on per-pixel temporal
+   percentiles give the probability that it is cropland (`fb_train()`). Pretrained models
+   are included (`fb_model_pretrained()`).
+3. **Fields.** Seeds are pixels that are likely cropland and unlikely border; a
+   marker-controlled watershed on the edge map assigns the remaining cropland pixels to
+   them, and objects below a minimum size are dropped (`fb_delineate()`), with thresholds
+   tuned on reference fields (`fb_tune()`).
+4. **Deep models (optional).** The FTW PRUE model runs in R (`fb_prue_predict()`), and a
+   logistic fusion combines its probabilities with the TBC maps (`fb_fuse()`).
+
+## Example 1: four landscapes
+
+The package ships about 1 km windows of four agricultural landscapes, none of them used to
+fit or tune the pretrained models.
+
+```{r landscapes, eval = FALSE}
+for (nm in fb_example_names()) {
+  s <- fb_example_stack(nm)
+  dl <- fb_read_probabilities(fb_example_files(nm)$prue)   # PRUE B3 output for the window
+  res <- fb_fields(s, dl = dl)                             # TBC fused with PRUE B3
+  print(fb_plot_fields(res$fields, s, date = 7))
+}
+```
+
+![Delineated fields in four landscapes](man/figures/README-landscapes.png)
+
+## Example 2: accuracy against reference fields
+
+The California window comes with reference fields of the California Department of Water
+Resources (CC0). `fb_evaluate()` applies the FTW object metric: a delineated and a
+reference field match when their intersection over union exceeds 0.5.
+
+```{r accuracy}
+s <- fb_example_stack("california")
+f <- fb_example_files("california")
+ref <- fb_reference(sf::st_read(f$fields, quiet = TRUE), s)
+
+m <- fb_model_pretrained("general")
+fields <- fb_delineate(fb_tbc_maps(s, m), thresholds = m$thresholds)
+fb_accuracy(fb_evaluate(ref, fields))[, c("reference_fields", "predicted_fields", "obj_precision",
+                                          "obj_recall", "obj_f1")]
+```
+
+## Example 3: fusion with a deep model
+
+```{r fusion, eval = FALSE}
+dl <- fb_read_probabilities(f$prue)                       # or fb_prue_predict(s, months = c(3, 7))
+fused <- fb_fuse(fb_tbc_maps(s, m), dl, fb_model_pretrained("general", "fusion"))
+fb_plot_maps(fused)
+```
+
+![Edge maps of PRUE B3, TBC and their fusion, and the accuracy of the fields obtained from each](man/figures/README-fusion.png)
+
+## Example 4: which features show the borders?
+
+```{r ranking, eval = FALSE}
+rk <- fb_rank_contrast(s, ref, n_pairs = 4000)
+fb_plot_ranking(rk, n = 20, selected = fb_select_features(rk, k = 8))
+```
+
+<img src="man/figures/README-ranking.png" width="70%" alt="Features ranked by the AUC of their temporal contrast across field borders" />
+
+## Example 5: your own area
+
+```{r own-area, eval = FALSE}
+aoi <- c(57.436, 36.606, 57.454, 36.620)        # lon/lat box near Jovein, Khorasan Razavi, Iran
+s <- fb_s2_monthly(aoi, "2024-01-01", "2024-12-31", dir = "jovein_s2")
+res <- fb_fields(s)
+sf::st_write(res$polygons, "jovein_fields.gpkg")
+```
+
+`fb_s2_monthly()` searches Microsoft Planetary Computer for Sentinel-2 Level-2A scenes,
+keeps the clearest scene of each month and resamples it to a common grid. See
+`vignette("new-area")` for the full example, with the deep model.
+
+## Example 6: fields around the world
+
+The pretrained model, applied without local training to one season of monthly scenes of
+about 1.6 km boxes in six farming regions (code in `vignette("gallery")`):
+
+![Fields delineated by the pretrained model in six farming regions](man/figures/README-gallery.png)
+
+Large fields with different crops, and centre pivots, come out as separate objects;
+neighbouring fields with little contrast, and small plots such as those of Ludhiana, are
+merged.
+
+## Example 7: train on your own fields
+
+```{r train, eval = FALSE}
+ref <- fb_reference(my_fields, s)               # sf polygons, one feature per field
+m <- fb_train(s, ref)                           # lists of stacks and references for many tiles
+tn <- fb_tune(fb_tbc_maps(s_tune, m), ref_tune) # thresholds on separate tiles
+m$thresholds <- as.list(tn[1, c("t_edge", "t_field", "min_size")])
+fb_save_model(m, "my_model.rds")
+```
+
+## Validation
+
+```{r validation, echo = FALSE}
+va <- read.csv(system.file("extdata", "validation", "object_accuracy.csv", package = "fieldborders"))
+va <- va[va$analysis == "primary", ]
+v <- function(region, method, metric = "obj_f1") sprintf("%.2f", va[va$region == region & va$method == method, metric])
+pm <- read.csv(system.file("extdata", "validation", "pretrained_models.csv", package = "fieldborders"))
+g <- function(region, method) sprintf("%.2f", pm$obj_f1[pm$model == "general" & pm$region == region & pm$method == method])
+```
+
+The method was validated on held-out test tiles in three regions, with the object metric
+of the FTW benchmark (details in `vignette("validation")`):
+
+- **California 2024** (54 test tiles, 3,696 reference fields): TBC without a deep model
+  reached an object F1 of `r v("California", "TBC")`, against
+  `r v("California", "PRUE B3 + object procedure")` for the CC-BY PRUE model with the same
+  object procedure and `r v("California", "FTW global field map")` for the FTW global field
+  map 2024; TBC fused with PRUE B3 reached `r v("California", "TBC + PRUE B3")`.
+- **Washington** (44 test tiles, 2,155 reference fields): TBC split many fields into
+  fragments and reached `r v("Washington", "TBC")`, below PRUE B3 with the object procedure
+  (`r v("Washington", "PRUE B3 + object procedure")`) and the FTW map
+  (`r v("Washington", "FTW global field map")`); fused with PRUE B3 it reached
+  `r v("Washington", "TBC + PRUE B3")`.
+- **Brazil 2019/20** (47 test tiles, partial reference maps, so object recall is the
+  measure), with models fitted in California and Washington: TBC recovered
+  `r v("Brazil", "TBC", "obj_recall")` of the reference fields and its fusion with PRUE B3
+  `r v("Brazil", "TBC + PRUE B3", "obj_recall")`, against
+  `r v("Brazil", "PRUE B3 + object procedure", "obj_recall")` for PRUE B3 with the object
+  procedure and `r v("Brazil", "FTW global field map", "obj_recall")` for the FTW map; the
+  gain came from irrigated rice.
+
+TBC is therefore not uniformly better than a deep model. Where reference fields exist,
+compare TBC, the deep model and their fusion on your own tiles before mapping a large area.
+The pretrained `"general"` model, whose minimum field size of about 1.1 ha was tuned over a
+wider grid, reached an object F1 of `r g("California", "TBC")` alone and
+`r g("California", "TBC + PRUE B3")` fused with PRUE B3 on the California test tiles, and
+`r g("Washington", "TBC")` and `r g("Washington", "TBC + PRUE B3")` on the Washington test
+tiles; it misses almost all fields smaller than 1 ha.
+
+![Object accuracy of field delineation methods on the test tiles of three regions](man/figures/README-validation.png)
+
+## Main functions
+
+| Function | Purpose |
+|---|---|
+| `fb_s2_monthly()` | monthly Sentinel-2 time series for any area (STAC) |
+| `fb_stack()`, `fb_read_stack()`, `fb_write_stack()` | image time series from rasters or files |
+| `fb_reference()` | reference raster (field, boundary, background) from polygons |
+| `fb_rank_contrast()`, `fb_select_features()` | rank and select features by border contrast |
+| `fb_feature_set()` | candidate features: bands, normalised differences, `svid` indices |
+| `fb_train()`, `fb_model_pretrained()` | TBC models: train your own or use the pretrained ones |
+| `fb_tbc_maps()` | edge and cropland probability maps |
+| `fb_prue_predict()`, `fb_read_probabilities()` | FTW PRUE deep model in R, or its saved output |
+| `fb_fit_fusion()`, `fb_fuse()` | combine TBC and deep-model probabilities |
+| `fb_delineate()`, `fb_tune()` | field objects and their thresholds |
+| `fb_fields()` | maps, fields and polygons in one call |
+| `fb_polygons()` | field polygons with area, perimeter and compactness |
+| `fb_evaluate()`, `fb_accuracy()`, `fb_bootstrap()` | FTW object metric, rates and paired bootstrap |
+| `fb_plot_rgb()`, `fb_plot_maps()`, `fb_plot_fields()`, `fb_plot_ranking()`, `fb_plot_accuracy()` | maps and graphs |
+
+## Bundled data
+
+`inst/extdata/<name>`, read with `fb_example_stack()` and `fb_example_files()`:
+
+| Name | Area | Season | Reference fields |
+|---|---|---|---|
+| `california` | Colusa County, Sacramento Valley, USA | 2024 | 10 polygons (DWR Statewide Crop Mapping 2024, CC0) |
+| `washington` | Columbia Basin, Washington, USA | 2024 | none |
+| `brazil` | Tocantins, Brazil | July 2019 to June 2020 | none |
+| `moghan` | Moghan plain, Ardabil, Iran | 2024 | none |
+
+Each holds monthly Sentinel-2 scenes (ten bands) with clear-sky masks, the PRUE B3 output
+for the window and, except for Brazil, the FTW global field map of the same year
+(CC-BY-4.0). Contains modified Copernicus Sentinel data 2019, 2020 and 2024.
+
+## Getting help
+
+- Help for a function: `?fb_delineate`
+- Articles: `vignette("fieldborders")`, `vignette("training")`, `vignette("new-area")`,
+  `vignette("gallery")`, `vignette("validation")`, also on the documentation site
+- Reference manual: `manual/fieldborders-manual.pdf`
+- Questions and bug reports: <https://github.com/ehsanrahimi666/fieldborders/issues>
+
+## Citation
+
+Rahimi, E. & Jung, C. (2026) fieldborders: agricultural field boundaries from Sentinel-2
+time series. R package version 1.0.0. <https://github.com/ehsanrahimi666/fieldborders>
+
+The PRUE models are those of the Fields of The World project (Kerner et al., 2025,
+<https://doi.org/10.1609/aaai.v39i27.35034>).
+
+## Licence
+
+GPL-3. The example data keep their own terms (see `?fb_example_files`).

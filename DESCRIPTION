@@ -1,0 +1,54 @@
+Package: fieldborders
+Type: Package
+Title: Agricultural Field Boundaries from Sentinel-2 Time Series
+Version: 1.0.0
+Authors@R: c(
+    person("Ehsan", "Rahimi", email = "ehsanrahimi666@gmail.com",
+           role = c("aut", "cre"), comment = c(ORCID = "0000-0002-8401-472X")),
+    person("Chuleui", "Jung", role = "aut"))
+Description: Delineates agricultural fields from Sentinel-2 image time series.
+    The temporal boundary contrast method ranks spectral bands and indices by how
+    differently they change through the season on the two sides of a field border
+    and inside one field, learns an edge map from the selected contrasts and a
+    cropland map from per-pixel temporal statistics, and turns both maps into
+    field objects by marker-controlled watershed. The maps can be fused with the
+    class probabilities of deep segmentation models such as the Fields of The World
+    PRUE models, which can be run from R. Functions cover monthly Sentinel-2 download
+    from a STAC catalogue, training with reference polygons, pretrained models,
+    threshold tuning, polygon export, object-level accuracy assessment compatible
+    with the Fields of The World benchmark, and maps of the results.
+License: GPL (>= 3)
+URL: https://github.com/ehsanrahimi666/fieldborders
+BugReports: https://github.com/ehsanrahimi666/fieldborders/issues
+Depends: R (>= 4.1.0)
+Imports:
+    data.table,
+    ggplot2 (>= 3.4.0),
+    grDevices,
+    ranger,
+    Rcpp,
+    sf,
+    stats,
+    terra (>= 1.7-0),
+    tools,
+    utils,
+    xgboost (>= 3.2.0)
+LinkingTo: Rcpp
+Suggests:
+    knitr,
+    patchwork,
+    rmarkdown,
+    rstac,
+    svid,
+    testthat (>= 3.0.0),
+    torch
+Remotes: ehsanrahimi666/_SVID
+SystemRequirements: GDAL, GEOS and PROJ (through terra and sf); optional
+    LibTorch (installed by the torch package) for the PRUE deep model.
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Encoding: UTF-8
+Language: en-GB
+LazyData: false
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.1

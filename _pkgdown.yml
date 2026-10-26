@@ -1,0 +1,57 @@
+url: https://ehsanrahimi666.github.io/fieldborders/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#8E1B26"
+    base_font: {google: "Source Sans 3"}
+    heading_font: {google: "Source Sans 3"}
+    code_font: {google: "JetBrains Mono"}
+
+home:
+  title: Agricultural field boundaries from Sentinel-2 time series
+  description: >
+    Delineate agricultural fields from monthly Sentinel-2 images with temporal boundary
+    contrast, optionally fused with deep segmentation models, and assess the result with the
+    Fields of The World object metric.
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    articles:
+      text: Articles
+      menu:
+        - text: Get started
+          href: articles/fieldborders.html
+        - text: Train your own model
+          href: articles/training.html
+        - text: Map a new area from Sentinel-2
+          href: articles/new-area.html
+        - text: "Gallery: fields around the world"
+          href: articles/gallery.html
+        - text: How accurate is it?
+          href: articles/validation.html
+
+reference:
+- title: Image time series
+  desc: Download monthly Sentinel-2 scenes or read your own images.
+  contents: [fb_s2_monthly, fb_stack, fb_read_stack, fb_write_stack, fb_dates, fb_subset_dates]
+- title: Temporal boundary contrast
+  desc: Rank spectral features by their contrast across field borders, train and apply models.
+  contents: [fb_feature_set, fb_reference, fb_rank_contrast, fb_select_features, fb_train, fb_tbc_maps,
+             fb_model_pretrained, fb_save_model, fb_load_model]
+- title: Deep models and fusion
+  desc: Run the Fields of The World PRUE model in R and fuse it with TBC.
+  contents: [fb_prue_download, fb_prue_predict, fb_read_probabilities, fb_fit_fusion, fb_fuse]
+- title: Field objects
+  desc: From maps to fields and polygons.
+  contents: [fb_fields, fb_delineate, fb_tune, fb_polygons, fb_components, fb_watershed, fb_finalise]
+- title: Accuracy
+  desc: Object-level accuracy compatible with the Fields of The World benchmark.
+  contents: [fb_evaluate, fb_accuracy, fb_bootstrap, fb_auc]
+- title: Maps and plots
+  contents: [fb_plot_rgb, fb_plot_maps, fb_plot_fields, fb_plot_ranking, fb_plot_accuracy, fb_theme]
+- title: Example data
+  contents: [fb_example_files, fb_example_stack, fb_example_bands, fb_example_names]

@@ -1,0 +1,8 @@
+bibentry(
+  bibtype = "Manual",
+  title = "fieldborders: Agricultural Field Boundaries from Sentinel-2 Time Series",
+  author = c(person("Ehsan", "Rahimi"), person("Chuleui", "Jung")),
+  year = "2026",
+  note = "R package version 1.0.0",
+  url = "https://github.com/ehsanrahimi666/fieldborders"
+)
