@@ -42,7 +42,7 @@ Suggests:
     svid,
     testthat (>= 3.0.0),
     torch
-Remotes: ehsanrahimi666/_SVID
+Remotes: svid=ehsanrahimi666/_SVID
 SystemRequirements: GDAL, GEOS and PROJ (through terra and sf); optional
     LibTorch (installed by the torch package) for the PRUE deep model.
 VignetteBuilder: knitr
