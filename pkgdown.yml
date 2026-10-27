@@ -1,0 +1,13 @@
+pandoc: 3.8.3
+pkgdown: 2.2.1
+pkgdown_sha: ~
+articles:
+  fieldborders: fieldborders.html
+  gallery: gallery.html
+  new-area: new-area.html
+  training: training.html
+  validation: validation.html
+last_built: 2026-10-27T05:06Z
+urls:
+  reference: https://ehsanrahimi666.github.io/fieldborders/reference
+  article: https://ehsanrahimi666.github.io/fieldborders/articles
